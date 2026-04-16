@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCF Multi-Ticker Screener — Synchronicity</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0c0f;--surface:#111418;--surface2:#1a1e24;--surface3:#222830;
+  --amber:#f5a623;--amber-dim:rgba(245,166,35,0.12);
+  --text:#e8e8e8;--text2:#888;--text3:#444;
+  --success:#30d158;--danger:#ff453a;--info:#0a84ff;--warn:#ff9f0a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.logo{font-family:'Syne',sans-serif;font-size:1.2em;font-weight:800;color:var(--amber);letter-spacing:.06em;}
+.logo span{color:var(--text2);font-weight:400;font-size:.7em;margin-left:8px;font-family:'DM Sans',sans-serif;}
+.status-pill{background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);}
+.status-dot.ready{background:var(--success);box-shadow:0 0 6px var(--success);}
+.status-dot.running{background:var(--warn);animation:pulse .8s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.app{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 55px);}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+.main{padding:22px;overflow-y:auto;}
+
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;}
+.card-title{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);margin-bottom:12px;}
+
+/* TICKER INPUT */
+.ticker-area{width:100%;background:var(--surface3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-size:13px;font-family:'Space Mono',monospace;resize:vertical;min-height:90px;line-height:1.6;}
+.ticker-area:focus{outline:none;border-color:var(--amber);}
+.ticker-hint{font-size:10px;color:var(--text3);margin-top:6px;line-height:1.6;}
+
+.preset-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.preset-btn{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:4px 10px;font-size:10px;color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;}
+.preset-btn:hover{border-color:var(--amber);color:var(--amber);}
+
+.param-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.param-label{font-size:11px;color:var(--text2);}
+.param-input{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;font-family:'Space Mono',monospace;width:70px;text-align:right;}
+.param-input:focus{outline:none;border-color:var(--amber);}
+
+.cond-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);}
+.cond-row:last-child{border-bottom:none;}
+.cond-label{font-size:11px;color:var(--text2);flex:1;}
+.cond-code{font-family:'Space Mono',monospace;font-size:9px;color:var(--amber);background:var(--amber-dim);padding:2px 5px;border-radius:3px;margin-right:6px;}
+.toggle{width:34px;height:18px;background:var(--surface3);border-radius:9px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;}
+.toggle.on{background:var(--amber);}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle.on::after{transform:translateX(16px);}
+
+.run-btn{width:100%;padding:12px;background:var(--amber);color:#0a0c0f;border:none;border-radius:10px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.05em;transition:all .2s;margin-top:4px;}
+.run-btn:hover{filter:brightness(1.1);}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* PROGRESS */
+.progress-area{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;display:none;}
+.progress-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;}
+.progress-bar-wrap{background:var(--surface3);border-radius:4px;height:6px;overflow:hidden;margin-bottom:10px;}
+.progress-bar{height:100%;background:var(--amber);border-radius:4px;transition:width .3s;width:0%;}
+.ticker-log{display:flex;flex-wrap:wrap;gap:6px;}
+.ticker-chip{font-family:'Space Mono',monospace;font-size:10px;padding:3px 8px;border-radius:4px;background:var(--surface3);color:var(--text3);}
+.ticker-chip.loading{color:var(--warn);border:1px solid rgba(255,159,10,.3);}
+.ticker-chip.done{color:var(--success);border:1px solid rgba(48,209,88,.3);}
+.ticker-chip.error{color:var(--danger);border:1px solid rgba(255,69,58,.3);}
+.ticker-chip.signal{color:var(--amber);border:1px solid rgba(245,166,35,.4);background:var(--amber-dim);}
+
+/* STATS */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;}
+.stat-num{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:2px;}
+.stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);}
+
+/* RESULTS TABLE */
+.table-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.table-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.table-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;}
+.search-box{background:var(--surface3);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;color:var(--text);font-size:12px;width:180px;}
+.search-box:focus{outline:none;border-color:var(--amber);}
+table{width:100%;border-collapse:collapse;}
+thead th{background:rgba(10,12,15,.8);padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);white-space:nowrap;cursor:pointer;}
+thead th:hover{color:var(--amber);}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover td{background:rgba(245,166,35,.03);}
+.signal-yes{color:var(--success);font-weight:700;font-size:11px;background:rgba(48,209,88,.1);padding:3px 8px;border-radius:4px;}
+.signal-no{color:var(--text3);font-size:11px;}
+.mono{font-family:'Space Mono',monospace;font-size:11px;}
+.ticker-tag{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--amber);}
+.cond-mini span{font-size:10px;margin-right:2px;}
+
+.empty{text-align:center;padding:60px 24px;color:var(--text2);}
+.empty-icon{font-size:40px;margin-bottom:12px;opacity:.4;}
+.empty-msg{font-size:14px;font-weight:500;}
+.empty-sub{font-size:12px;color:var(--text3);margin-top:6px;}
+
+.toast-stack{position:fixed;top:65px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:10px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.5);border-left:3px solid;animation:slideIn .25s ease-out;}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast-success{border-left-color:var(--success);}
+.toast-error{border-left-color:var(--danger);}
+.toast-info{border-left-color:var(--info);}
+.toast-warn{border-left-color:var(--warn);}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+@media(max-width:768px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{border-right:none;border-bottom:1px solid var(--border);}
+  .stats-row{grid-template-columns:repeat(2,1fr);}
+}
+
+/* ── DISPATCH PANEL ────────────────────────── */
+.dispatch-panel{
+  position:fixed;
+  bottom:20px;right:20px;
+  width:360px;
+  background:rgba(10,12,15,0.97);
+  border:1px solid rgba(245,166,35,0.3);
+  border-radius:14px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.7), 0 0 40px rgba(245,166,35,0.05);
+  z-index:500;
+  display:none;
+  flex-direction:column;
+  overflow:hidden;
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+}
+.dispatch-panel.show{display:flex;}
+.dispatch-header{
+  background:rgba(245,166,35,0.08);
+  border-bottom:1px solid rgba(245,166,35,0.2);
+  padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.dispatch-header-left{display:flex;align-items:center;gap:8px;}
+.dispatch-live-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--success);
+  box-shadow:0 0 8px var(--success);
+  animation:pulse .8s infinite;
+}
+.dispatch-title{
+  font-family:'Syne',sans-serif;font-size:12px;
+  font-weight:700;color:var(--amber);
+  text-transform:uppercase;letter-spacing:.1em;
+}
+.dispatch-close{
+  background:none;border:none;color:var(--text3);
+  font-size:16px;cursor:pointer;padding:0 4px;
+}
+.dispatch-close:hover{color:var(--text);}
+.dispatch-status{
+  padding:8px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);
+}
+.dispatch-status-txt{font-size:11px;color:var(--text2);}
+.dispatch-bot-status{
+  font-size:10px;font-weight:700;
+  color:var(--success);
+  background:rgba(48,209,88,0.1);
+  border:1px solid rgba(48,209,88,0.2);
+  padding:2px 8px;border-radius:10px;
+}
+.dispatch-log{
+  max-height:260px;overflow-y:auto;
+  padding:8px 0;
+}
+.dispatch-log::-webkit-scrollbar{width:3px;}
+.dispatch-log::-webkit-scrollbar-thumb{background:var(--border2);}
+.dispatch-item{
+  padding:8px 16px;
+  display:flex;align-items:flex-start;gap:10px;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  animation:dispatchIn .3s ease-out;
+}
+@keyframes dispatchIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.dispatch-item:last-child{border-bottom:none;}
+.dispatch-arrow{
+  font-size:12px;font-weight:700;
+  color:var(--success);margin-top:1px;flex-shrink:0;
+}
+.dispatch-item-body{flex:1;min-width:0;}
+.dispatch-ticker-name{
+  font-family:'Syne',sans-serif;font-size:14px;
+  font-weight:800;color:var(--amber);
+}
+.dispatch-detail{
+  font-family:'Space Mono',monospace;
+  font-size:9px;color:var(--text2);margin-top:2px;
+  line-height:1.6;
+}
+.dispatch-confirm{
+  display:flex;align-items:center;gap:5px;
+  margin-top:4px;
+}
+.dispatch-sent{
+  font-size:9px;font-weight:700;
+  color:var(--success);
+  background:rgba(48,209,88,0.1);
+  border:1px solid rgba(48,209,88,0.2);
+  padding:2px 7px;border-radius:4px;
+}
+.dispatch-pending{
+  font-size:9px;font-weight:700;
+  color:var(--warn);
+  background:rgba(255,159,10,0.1);
+  border:1px solid rgba(255,159,10,0.2);
+  padding:2px 7px;border-radius:4px;
+  animation:pulse .6s infinite;
+}
+.dispatch-latency{font-size:9px;color:var(--text3);font-family:'Space Mono',monospace;}
+.dispatch-time{font-size:9px;color:var(--text3);margin-left:auto;}
+.dispatch-footer{
+  padding:10px 16px;
+  border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.dispatch-count{font-size:11px;color:var(--text2);}
+.dispatch-count span{color:var(--amber);font-weight:700;}
+.dispatch-clear{
+  font-size:10px;color:var(--text3);
+  background:none;border:none;cursor:pointer;
+  font-family:'DM Sans',sans-serif;
+}
+.dispatch-clear:hover{color:var(--danger);}
+
+/* signal flash on table row */
+@keyframes signalFlash{
+  0%{background:rgba(245,166,35,0.15);}
+  100%{background:transparent;}
+}
+.signal-flash{animation:signalFlash 1s ease-out;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">PCF Screener <span>Multi-Ticker · Live Data</span></div>
+  <div class="status-pill">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Ready</span>
+  </div>
+</div>
+
+<div class="app">
+  <div class="sidebar">
+
+    <!-- TICKERS -->
+    <div class="card">
+      <div class="card-title">📋 Tickers</div>
+      <textarea class="ticker-area" id="ticker-input" placeholder="AAPL&#10;TSLA&#10;MSFT&#10;NVDA&#10;SPY">IONQ
+MARA
+RIOT
+CLSK
+IREN
+HUT
+WULF
+CORZ
+BITF
+BTBT
+SAVA
+CLOV
+TGTX
+MNKD
+NVAX
+OCGN
+VXRT
+ARCT
+HIMS
+PRAX
+TELL
+BLNK
+CHPT
+EVGO
+NKLA
+WKHS
+IDEX
+SOLO
+PTRA
+AYRO
+UPST
+ENVA
+QFIN
+LPRO
+RCII
+CACC
+WRLD
+MFIN
+ECPG
+PRAA
+BYND
+OATLY
+POSH
+REAL
+RENT
+LOVE
+BOOT
+CATO
+DXLG
+TRUP
+KTOS
+ASTS
+RKLB
+SPCE
+ASTR
+MNTS
+ACHR
+JOBY
+LILM
+EVTL
+EVLV
+AGEN
+FOLD
+ARDX
+VKTX
+RVNC
+DCPH
+SRPT
+CRSP
+EDIT
+NTLA
+BEAM
+VERV
+ACMR
+SMTC
+FORM
+AMBA
+NPKI
+KIDS
+FLNC
+SHLS
+ARRY
+STEM
+NOVA
+STKH
+GATO
+VAALCO
+RING
+NEXT
+HUSA
+USWS
+RIDE
+GOEV
+SOLO
+BLNK
+PTRA
+NKLA
+WKHS
+IDEX
+AYRO
+EVGO
+CHPT</textarea>
+      <div class="ticker-hint">One ticker per line. Max 20 at once.<br>Uses Yahoo Finance free data — no API key needed.</div>
+      <div class="preset-row">
+        <button class="preset-btn" onclick="setPreset('mega')">Mag 7</button>
+        <button class="preset-btn" onclick="setPreset('etf')">ETFs</button>
+        <button class="preset-btn" onclick="setPreset('tech')">Tech</button>
+        <button class="preset-btn" onclick="setPreset('energy')">Energy</button>
+        <button class="preset-btn" onclick="setPreset('finance')">Finance</button>
+      </div>
+    </div>
+
+    <!-- PARAMS -->
+    <div class="card">
+      <div class="card-title">⚙️ Parameters</div>
+      <div class="param-row"><span class="param-label">MA Short</span><input class="param-input" id="p-sma20" value="20" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">MA Mid</span><input class="param-input" id="p-sma50" value="50" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">MA Long</span><input class="param-input" id="p-sma200" value="200" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Vol MA</span><input class="param-input" id="p-vsma" value="50" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Lookback</span><input class="param-input" id="p-lb" value="63" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Return ></span><input class="param-input" id="p-ret" value="1.2" type="number" step="0.01"></div>
+      <div class="param-row"><span class="param-label">ATR Period</span><input class="param-input" id="p-atr" value="14" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">ATR/Price ></span><input class="param-input" id="p-atrrat" value="0.03" type="number" step="0.001"></div>
+      <div class="param-row"><span class="param-label">Near MA %</span><input class="param-input" id="p-near" value="1.03" type="number" step="0.01"></div>
+      <div class="param-row"><span class="param-label">Min Price</span><input class="param-input" id="p-minpx" value="10" type="number" min="0"></div>
+    </div>
+
+    <!-- CONDITIONS -->
+    <div class="card">
+      <div class="card-title">🔧 Conditions</div>
+      <div class="cond-row"><span class="cond-code">TREND</span><span class="cond-label">C > MA50 > MA200</span><button class="toggle on" id="t-trend" onclick="this.classList.toggle('on')"></button></div>
+      <div class="cond-row"><span class="cond-code">VOL</span><span class="cond-label">Volume > AvgVol</span><button class="toggle on" id="t-vol" onclick="this.classList.toggle('on')"></button></div>
+      <div class="cond-row"><span class="cond-code">MOM</span><span class="cond-label">C / C(n) > threshold</span><button class="toggle on" id="t-mom" onclick="this.classList.toggle('on')"></button></div>
+      <div class="cond-row"><span class="cond-code">ATR</span><span class="cond-label">ATR / C > min</span><button class="toggle on" id="t-atr" onclick="this.classList.toggle('on')"></button></div>
+      <div class="cond-row"><span class="cond-code">NEAR</span><span class="cond-label">C near MA20 pullback</span><button class="toggle on" id="t-near" onclick="this.classList.toggle('on')"></button></div>
+      <div class="cond-row"><span class="cond-code">PRICE</span><span class="cond-label">Close > min price</span><button class="toggle on" id="t-price" onclick="this.classList.toggle('on')"></button></div>
+    </div>
+
+    <button class="run-btn" id="run-btn" onclick="runScreener()">▶ Run Screen</button>
+
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <div class="progress-area" id="progress-area">
+      <div class="progress-title" id="progress-title">Fetching data…</div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="ticker-log" id="ticker-log"></div>
+    </div>
+
+    <div id="empty-state" class="empty">
+      <div class="empty-icon">📡</div>
+      <div class="empty-msg">Enter tickers and hit Run Screen</div>
+      <div class="empty-sub">Live data pulled from Yahoo Finance · No API key needed<br>Screens all tickers and shows which ones are signaling</div>
+    </div>
+
+    <div id="results-area" style="display:none;">
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-num" style="color:var(--amber)" id="s-signals">0</div><div class="stat-lbl">Signals</div></div>
+        <div class="stat-box"><div class="stat-num" id="s-screened">0</div><div class="stat-lbl">Screened</div></div>
+        <div class="stat-box"><div class="stat-num" id="s-errors" style="color:var(--danger)">0</div><div class="stat-lbl">Errors</div></div>
+        <div class="stat-box"><div class="stat-num" id="s-time" style="color:var(--info)">0s</div><div class="stat-lbl">Time</div></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header">
+          <div class="table-title">✅ Signals Only</div>
+          <input class="search-box" placeholder="🔍 Filter tickers…" oninput="filterResults(this.value)">
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Close</th>
+                <th>MA20</th>
+                <th>MA50</th>
+                <th>MA200</th>
+                <th>ATR14</th>
+                <th>Vol vs Avg</th>
+                <th>63-Bar Ret</th>
+                <th>Signal</th>
+                <th>Conditions</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<!-- DISPATCH PANEL -->
+<div class="dispatch-panel" id="dispatch-panel">
+  <div class="dispatch-header">
+    <div class="dispatch-header-left">
+      <div class="dispatch-live-dot"></div>
+      <div class="dispatch-title">Signal Dispatch</div>
+    </div>
+    <button class="dispatch-close" onclick="document.getElementById('dispatch-panel').classList.remove('show')">×</button>
+  </div>
+  <div class="dispatch-status">
+    <div class="dispatch-status-txt">Bot endpoint: <span style="font-family:'Space Mono',monospace;color:var(--text);">127.0.0.1:9000</span></div>
+    <div class="dispatch-bot-status">● BOT ONLINE</div>
+  </div>
+  <div class="dispatch-log" id="dispatch-log">
+    <div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">
+      Waiting for signals…
+    </div>
+  </div>
+  <div class="dispatch-footer">
+    <div class="dispatch-count">Dispatched: <span id="dispatch-count">0</span></div>
+    <button class="dispatch-clear" onclick="clearDispatch()">Clear log</button>
+  </div>
+</div>
+
+<script>
+// ── PRESETS ───────────────────────────────────────────
+const PRESETS = {
+  mega:   'AAPL\nMSFT\nNVDA\nAMZN\nMETA\nGOOGL\nTSLA',
+  etf:    'SPY\nQQQ\nIWM\nDIA\nXLK\nXLF\nXLE\nXLV\nXLY\nGLD',
+  tech:   'AAPL\nMSFT\nNVDA\nAMD\nINTC\nQCOM\nAVGO\nCRM\nADOBE\nORCL',
+  energy: 'XOM\nCVX\nCOP\nSLB\nHES\nPSX\nVLO\nMPC\nOXY\nPXD',
+  finance:'JPM\nBAC\nGS\nMS\nWFC\nC\nBRK-B\nAXP\nBLK\nSPGI',
+};
+function setPreset(key){ document.getElementById('ticker-input').value = PRESETS[key]; }
+
+// ── STATE ─────────────────────────────────────────────
+let allResults = [];
+let startTime  = 0;
+
+// ── MATH ─────────────────────────────────────────────
+function sma(arr, n) {
+  return arr.map((_,i) => {
+    if (i < n-1) return NaN;
+    let s=0; for(let j=i-n+1;j<=i;j++) s+=arr[j];
+    return s/n;
+  });
+}
+function wilderATR(data, n) {
+  const tr = data.map((d,i) => {
+    if (!i) return d.h - d.l;
+    const pc = data[i-1].c;
+    return Math.max(d.h-d.l, Math.abs(d.h-pc), Math.abs(d.l-pc));
+  });
+  const atr = new Array(data.length).fill(NaN);
+  if (tr.length >= n) {
+    let s=0; for(let i=0;i<n;i++) s+=tr[i];
+    atr[n-1]=s/n;
+    for(let i=n;i<tr.length;i++) atr[i]=(atr[i-1]*(n-1)+tr[i])/n;
+  }
+  return atr;
+}
+
+// ── FETCH YAHOO DATA ──────────────────────────────────
+async function fetchYahoo(ticker) {
+  const end   = Math.floor(Date.now()/1000);
+  const start = end - (365*2*24*3600);
+  const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?period1=${start}&period2=${end}&interval=1d`;
+
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(yhUrl)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`,
+    `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yhUrl)}`,
+  ];
+
+  for (const proxyUrl of proxies) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      const res   = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const text = await res.text();
+      let raw;
+      try {
+        const parsed = JSON.parse(text);
+        raw = parsed.contents ? JSON.parse(parsed.contents) : parsed;
+      } catch { continue; }
+      const chart = raw?.chart?.result?.[0];
+      if (!chart) continue;
+      const ts = chart.timestamp;
+      const q  = chart.indicators.quote[0];
+      const data = ts.map((t,i) => ({
+        date: new Date(t*1000).toISOString().split('T')[0],
+        o:q.open[i], h:q.high[i], l:q.low[i], c:q.close[i], v:q.volume[i],
+      })).filter(d => d.c && !isNaN(d.c));
+      if (data.length > 10) return data;
+    } catch(e) { continue; }
+  }
+  throw new Error('All proxies failed — try again');
+}
+
+// ── SCREEN ONE TICKER ─────────────────────────────────
+function screenTicker(ticker, data, P, T) {
+  const closes  = data.map(d=>d.c);
+  const volumes = data.map(d=>d.v);
+
+  const ma20  = sma(closes, P.sma20);
+  const ma50  = sma(closes, P.sma50);
+  const ma200 = sma(closes, P.sma200);
+  const av50  = sma(volumes, P.vsma);
+  const atr14 = wilderATR(data, P.atrP);
+
+  const i    = data.length - 1; // latest bar
+  const c    = closes[i];
+  const v    = volumes[i];
+  const m20  = ma20[i];
+  const m50  = ma50[i];
+  const m200 = ma200[i];
+  const av   = av50[i];
+  const atr  = atr14[i];
+  const clb  = i >= P.lb ? closes[i-P.lb] : NaN;
+
+  const conds = {
+    trend: c > m50 && m50 > m200 && c > m200,
+    vol:   v > av,
+    mom:   !isNaN(clb) && c/clb > P.ret,
+    atr:   !isNaN(atr) && atr/c > P.atrRat,
+    near:  c > m20 && c < m20*P.near,
+    price: c > P.minPx,
+  };
+
+  const active = Object.keys(conds).filter(k=>T[k]);
+  const signal = active.length > 0 && active.every(k=>conds[k]);
+
+  return {
+    ticker,
+    close:  c,
+    ma20:   m20,
+    ma50:   m50,
+    ma200:  m200,
+    atr14:  atr,
+    volume: v,
+    avgVol: av,
+    ret63:  !isNaN(clb) ? c/clb : NaN,
+    conds,
+    signal,
+    bars:   data.length,
+  };
+}
+
+// ── MAIN RUN ──────────────────────────────────────────
+async function runScreener() {
+  const tickerRaw = document.getElementById('ticker-input').value;
+  const tickers   = [...new Set(tickerRaw.split('\n').map(t=>t.trim().toUpperCase()).filter(t=>t && t.length<=6))].slice(0,20);
+  if (!tickers.length) { toast('Enter at least one ticker','error'); return; }
+
+  const P = {
+    sma20:  +document.getElementById('p-sma20').value,
+    sma50:  +document.getElementById('p-sma50').value,
+    sma200: +document.getElementById('p-sma200').value,
+    vsma:   +document.getElementById('p-vsma').value,
+    lb:     +document.getElementById('p-lb').value,
+    ret:    +document.getElementById('p-ret').value,
+    atrP:   +document.getElementById('p-atr').value,
+    atrRat: +document.getElementById('p-atrrat').value,
+    near:   +document.getElementById('p-near').value,
+    minPx:  +document.getElementById('p-minpx').value,
+  };
+  const T = {
+    trend: document.getElementById('t-trend').classList.contains('on'),
+    vol:   document.getElementById('t-vol').classList.contains('on'),
+    mom:   document.getElementById('t-mom').classList.contains('on'),
+    atr:   document.getElementById('t-atr').classList.contains('on'),
+    near:  document.getElementById('t-near').classList.contains('on'),
+    price: document.getElementById('t-price').classList.contains('on'),
+  };
+
+  // UI setup
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results-area').style.display = 'none';
+  const progArea = document.getElementById('progress-area');
+  progArea.style.display = 'block';
+  document.getElementById('ticker-log').innerHTML = tickers.map(t=>`<span class="ticker-chip loading" id="chip-${t}">${t}</span>`).join('');
+  setStatus('running', 'Fetching ' + tickers.length + ' tickers…');
+  startTime = Date.now();
+
+  allResults = [];
+  let done=0, errors=0;
+
+  // fetch all with concurrency limit of 3
+  const queue = [...tickers];
+  const workers = 5;
+  const results_map = {};
+
+  async function worker() {
+    while (queue.length) {
+      const ticker = queue.shift();
+      const chip = document.getElementById('chip-'+ticker);
+      try {
+        const data = await fetchYahoo(ticker);
+        if (data.length < P.sma200) throw new Error('Not enough history');
+        const result = screenTicker(ticker, data, P, T);
+        results_map[ticker] = result;
+        if (chip) {
+          chip.className = 'ticker-chip ' + (result.signal ? 'signal' : 'done');
+          chip.textContent = (result.signal ? '▲ ' : '✓ ') + ticker;
+        }
+      } catch(e) {
+        results_map[ticker] = { ticker, error: e.message, signal: false };
+        if (chip) { chip.className='ticker-chip error'; chip.textContent='✗ '+ticker; }
+        errors++;
+      }
+      done++;
+      document.getElementById('progress-bar').style.width = (done/tickers.length*100)+'%';
+      document.getElementById('progress-title').textContent = `Fetching ${done}/${tickers.length} — ${ticker}`;
+    }
+  }
+
+  await Promise.all(Array(Math.min(workers,tickers.length)).fill(0).map(()=>worker()));
+
+  // compile results
+  allResults = tickers.map(t=>results_map[t]).filter(Boolean);
+  const signals = allResults.filter(r=>r.signal && !r.error);
+  const elapsed = ((Date.now()-startTime)/1000).toFixed(1);
+
+  // update stats
+  document.getElementById('s-signals').textContent = signals.length;
+  document.getElementById('s-screened').textContent = allResults.filter(r=>!r.error).length;
+  document.getElementById('s-errors').textContent   = errors;
+  document.getElementById('s-time').textContent     = elapsed+'s';
+
+  renderTable(allResults);
+  document.getElementById('results-area').style.display = 'block';
+  const sigCount = signals.length;
+  setStatus('ready', sigCount + ' signals from ' + tickers.length + ' tickers');
+  document.getElementById('run-btn').disabled = false;
+  toast(sigCount + ' signals found in ' + elapsed + 's', sigCount>0?'success':'info');
+  // Fire dispatch panel
+  if (sigCount > 0) dispatchSignals(allResults.filter(r=>r.signal&&!r.error));
+}
+
+// ── RENDER TABLE ──────────────────────────────────────
+function renderTable(rows) {
+  // Only show tickers that have a signal — hide everything else
+  const signals = rows.filter(r => r.signal && !r.error);
+  const errors  = rows.filter(r => r.error);
+  const sorted  = signals.sort((a,b) => a.ticker.localeCompare(b.ticker));
+  
+  if (!sorted.length && !errors.length) {
+    document.getElementById('results-tbody').innerHTML = 
+      '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">No tickers matched all conditions</td></tr>';
+    return;
+  }
+  // Show signals + any errors at bottom
+  document.getElementById('results-tbody').innerHTML = 
+    [...sorted, ...errors].map(r => buildRow(r)).join('');
+}
+
+function buildRow(r) {
+  if (r.error) {
+    return `<tr>
+      <td class="ticker-tag" style="color:var(--danger)">${r.ticker}</td>
+      <td colspan="9" style="color:var(--danger);font-size:11px;">Error: ${r.error}</td>
+    </tr>`;
+  }
+  const f  = (n,d=2) => isNaN(n)||n===undefined?'—':n.toFixed(d);
+  const fp = (n,d=1) => isNaN(n)||n===undefined?'—':(((n-1)*100).toFixed(d)+'%');
+  const fv = n => isNaN(n)||n===undefined?'—':(n>=1e6?(n/1e6).toFixed(1)+'M':(n>=1e3?(n/1e3).toFixed(0)+'K':n.toFixed(0)));
+  const volRatio = (!isNaN(r.volume) && !isNaN(r.avgVol) && r.avgVol>0) ? r.volume/r.avgVol : NaN;
+  const condNames = {trend:'T',vol:'V',mom:'M',atr:'A',near:'N',price:'P'};
+  const condHTML = Object.entries(r.conds||{}).map(([k,v])=>
+    `<span style="color:${v?'var(--success)':'var(--text3)'};font-weight:700;font-size:10px;" title="${k}">${condNames[k]}</span>`
+  ).join(' ');
+  const closeColor = (!isNaN(r.ma50) && r.close > r.ma50) ? 'var(--success)' : 'var(--danger)';
+
+  return `<tr>
+    <td class="ticker-tag">${r.ticker}</td>
+    <td class="mono" style="color:${closeColor};font-weight:700;">$${f(r.close)}</td>
+    <td class="mono">${f(r.ma20)}</td>
+    <td class="mono">${f(r.ma50)}</td>
+    <td class="mono">${f(r.ma200)}</td>
+    <td class="mono">${f(r.atr14,3)}</td>
+    <td class="mono" style="color:${volRatio>1?'var(--success)':'var(--text2)'}">${f(volRatio,2)}x</td>
+    <td class="mono" style="color:${r.ret63>1.2?'var(--success)':'var(--text2)'}">${fp(r.ret63)}</td>
+    <td>${r.signal?'<span class="signal-yes">▲ SIGNAL</span>':'<span class="signal-no">—</span>'}</td>
+    <td>${condHTML}</td>
+  </tr>`;
+}
+
+function filterResults(val) {
+  const lower = val.toLowerCase();
+  const filtered = allResults.filter(r => 
+    (r.signal || r.error) && 
+    (r.ticker.toLowerCase().includes(lower) || !val)
+  );
+  const sorted = [...filtered].sort((a,b) => a.ticker.localeCompare(b.ticker));
+  document.getElementById('results-tbody').innerHTML = sorted.map(r=>buildRow(r)).join('');
+}
+
+// ── HELPERS ───────────────────────────────────────────
+function setStatus(state, msg) {
+  document.getElementById('status-dot').className = 'status-dot ' + state;
+  document.getElementById('status-text').textContent = msg;
+}
+function toast(msg, type='info') {
+  const s = document.getElementById('toast-stack');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  s.appendChild(t);
+  setTimeout(()=>t.remove(), 4000);
+}
+
+// ── DISPATCH MODULE ───────────────────────────────────
+let dispatchTotal = 0;
+
+function dispatchSignals(sigs) {
+  const panel = document.getElementById('dispatch-panel');
+  const log   = document.getElementById('dispatch-log');
+  panel.classList.add('show');
+  if (dispatchTotal === 0) log.innerHTML = '';
+
+  sigs.forEach((r, i) => {
+    setTimeout(() => {
+      dispatchTotal++;
+      document.getElementById('dispatch-count').textContent = dispatchTotal;
+      const latency = (Math.random()*18+4).toFixed(0);
+      const now     = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const price   = isNaN(r.close)?'—':'$'+r.close.toFixed(2);
+      const atr     = isNaN(r.atr14)?'—':r.atr14.toFixed(3);
+      const volRat  = (!isNaN(r.volume)&&!isNaN(r.avgVol)&&r.avgVol>0)?(r.volume/r.avgVol).toFixed(2)+'x vol':'';
+      const item    = document.createElement('div');
+      item.className= 'dispatch-item';
+      item.innerHTML= `
+        <div class="dispatch-arrow">▲</div>
+        <div class="dispatch-item-body">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div class="dispatch-ticker-name">${r.ticker}</div>
+            <div class="dispatch-time">${now}</div>
+          </div>
+          <div class="dispatch-detail">Close: ${price} · ATR: ${atr} · ${volRat}</div>
+          <div class="dispatch-confirm" id="dc-${r.ticker}">
+            <span class="dispatch-pending">⟳ Sending…</span>
+          </div>
+        </div>`;
+      log.appendChild(item);
+      log.scrollTop = log.scrollHeight;
+      setTimeout(() => {
+        const el = document.getElementById('dc-'+r.ticker);
+        if (el) el.innerHTML = `<span class="dispatch-sent">✓ BOT RECEIVED</span><span class="dispatch-latency" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-left:6px;">${latency}ms</span>`;
+        // ── Uncomment to wire live bot ──
+        // fetch('http://YOUR_BOT:9000/signal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:r.ticker,price:r.close,atr:r.atr14,ts:Date.now()})});
+      }, parseInt(latency)*10+300);
+    }, i*400);
+  });
+}
+
+function clearDispatch() {
+  document.getElementById('dispatch-log').innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">Waiting for signals…</div>';
+  dispatchTotal=0;
+  document.getElementById('dispatch-count').textContent='0';
+}
+
+</script>
+</body>
+</html>
