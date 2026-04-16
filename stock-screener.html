@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCF Stock Screener — Synchronicity</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0a0c0f; --surface:#111418; --surface2:#1a1e24; --surface3:#222830;
+  --amber:#f5a623; --amber-dim:rgba(245,166,35,0.12); --amber-glow:rgba(245,166,35,0.06);
+  --text:#e8e8e8; --text2:#888; --text3:#444;
+  --success:#30d158; --danger:#ff453a; --info:#0a84ff; --warn:#ff9f0a;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.12);
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* HEADER */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.logo{font-family:'Syne',sans-serif;font-size:1.3em;font-weight:800;color:var(--amber);letter-spacing:.06em;}
+.logo span{color:var(--text2);font-weight:400;font-size:.7em;margin-left:8px;font-family:'DM Sans',sans-serif;}
+.status-pill{background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);}
+.status-dot.ready{background:var(--success);box-shadow:0 0 6px var(--success);}
+.status-dot.running{background:var(--warn);animation:pulse .8s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* LAYOUT */
+.app{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 57px);}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px;overflow-y:auto;}
+.main{padding:24px;overflow-y:auto;}
+
+/* CARDS */
+.card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px;}
+.card-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);margin-bottom:14px;}
+
+/* UPLOAD ZONE */
+.upload-zone{border:2px dashed var(--border2);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--amber);background:var(--amber-dim);}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-icon{font-size:28px;margin-bottom:8px;}
+.upload-title{font-size:13px;font-weight:600;margin-bottom:4px;}
+.upload-sub{font-size:11px;color:var(--text2);}
+.file-loaded{background:rgba(48,209,88,.1);border:1px solid rgba(48,209,88,.3);border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:8px;margin-top:10px;display:none;}
+.file-loaded.show{display:flex;}
+.file-name{font-size:12px;font-weight:600;color:var(--success);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* CONDITION TOGGLES */
+.cond-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);}
+.cond-row:last-child{border-bottom:none;}
+.cond-label{font-size:12px;color:var(--text2);flex:1;}
+.cond-code{font-family:'Space Mono',monospace;font-size:10px;color:var(--amber);background:var(--amber-dim);padding:2px 6px;border-radius:4px;margin-right:8px;}
+.toggle{width:36px;height:20px;background:var(--surface3);border-radius:10px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;border:none;}
+.toggle.on{background:var(--amber);}
+.toggle::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle.on::after{transform:translateX(16px);}
+
+/* PARAMS */
+.param-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.param-label{font-size:12px;color:var(--text2);}
+.param-input{background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--text);font-size:12px;font-family:'Space Mono',monospace;width:80px;text-align:right;}
+.param-input:focus{outline:none;border-color:var(--amber);}
+
+/* RUN BUTTON */
+.run-btn{width:100%;padding:13px;background:var(--amber);color:#0a0c0f;border:none;border-radius:10px;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.05em;transition:all .2s;margin-top:4px;}
+.run-btn:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.run-btn:active{transform:translateY(0);}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+
+/* STATS ROW */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;}
+.stat-num{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:3px;}
+.stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);}
+
+/* TABLE */
+.table-wrap{background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.table-header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.table-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);}
+.search-box{background:var(--surface3);border:1px solid var(--border2);border-radius:8px;padding:7px 12px;color:var(--text);font-size:12px;width:200px;}
+.search-box:focus{outline:none;border-color:var(--amber);}
+table{width:100%;border-collapse:collapse;}
+thead th{background:rgba(10,12,15,.8);padding:10px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);white-space:nowrap;}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;white-space:nowrap;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover td{background:rgba(245,166,35,.03);}
+.signal-yes{color:var(--success);font-weight:700;font-size:11px;}
+.signal-no{color:var(--text3);font-size:11px;}
+.trend-up{color:var(--success);}
+.trend-down{color:var(--danger);}
+.mono{font-family:'Space Mono',monospace;font-size:11px;}
+
+/* CHART AREA */
+.chart-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px;}
+.chart-title{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);margin-bottom:14px;}
+
+/* EMPTY STATE */
+.empty{text-align:center;padding:60px 24px;color:var(--text2);}
+.empty-icon{font-size:40px;margin-bottom:12px;opacity:.4;}
+.empty-msg{font-size:14px;font-weight:500;}
+.empty-sub{font-size:12px;color:var(--text3);margin-top:6px;}
+
+/* CONDITION CHIPS */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+.chip{background:var(--surface3);border:1px solid var(--border2);border-radius:20px;padding:4px 11px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text2);}
+.chip.pass{background:rgba(48,209,88,.1);border-color:rgba(48,209,88,.3);color:var(--success);}
+.chip.fail{background:rgba(255,69,58,.1);border-color:rgba(255,69,58,.3);color:var(--danger);}
+
+/* TOAST */
+.toast-stack{position:fixed;top:70px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--surface);border:1px solid var(--border2);color:var(--text);padding:11px 16px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.5);border-left:3px solid;animation:slideIn .25s ease-out;}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast-success{border-left-color:var(--success);}
+.toast-error{border-left-color:var(--danger);}
+.toast-info{border-left-color:var(--info);}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--surface);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+/* MOBILE */
+@media(max-width:768px){
+  .app{grid-template-columns:1fr;}
+  .sidebar{border-right:none;border-bottom:1px solid var(--border);}
+  .stats-row{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">PCF Screener <span>by Synchronicity</span></div>
+  <div class="status-pill">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">No data loaded</span>
+  </div>
+</div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Upload -->
+    <div class="card">
+      <div class="card-title">📂 Data Source</div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" accept=".csv" id="file-input" onchange="handleFile(this)">
+        <div class="upload-icon">📊</div>
+        <div class="upload-title">Upload OHLCV CSV</div>
+        <div class="upload-sub">Columns: Date, Open, High, Low, Close, Volume</div>
+      </div>
+      <div class="file-loaded" id="file-loaded">
+        <span>✓</span>
+        <span class="file-name" id="file-name"></span>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="card">
+      <div class="card-title">⚙️ Parameters</div>
+      <div class="param-row"><span class="param-label">SMA Short</span><input class="param-input" id="p-sma20" value="20" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">SMA Mid</span><input class="param-input" id="p-sma50" value="50" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">SMA Long</span><input class="param-input" id="p-sma200" value="200" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Volume SMA</span><input class="param-input" id="p-vsma" value="50" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Lookback (bars)</span><input class="param-input" id="p-lb" value="63" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">Return Threshold</span><input class="param-input" id="p-ret" value="1.2" type="number" step="0.01"></div>
+      <div class="param-row"><span class="param-label">ATR Period</span><input class="param-input" id="p-atr" value="14" type="number" min="1"></div>
+      <div class="param-row"><span class="param-label">ATR/Price Min</span><input class="param-input" id="p-atrrat" value="0.03" type="number" step="0.001"></div>
+      <div class="param-row"><span class="param-label">Near MA %</span><input class="param-input" id="p-near" value="1.03" type="number" step="0.01"></div>
+      <div class="param-row"><span class="param-label">Min Price ($)</span><input class="param-input" id="p-minpx" value="10" type="number" min="0"></div>
+    </div>
+
+    <!-- Conditions -->
+    <div class="card">
+      <div class="card-title">🔧 Conditions</div>
+      <div class="cond-row">
+        <span class="cond-code">TREND</span>
+        <span class="cond-label">C > MA50 > MA200</span>
+        <button class="toggle on" id="t-trend" onclick="toggleCond(this)"></button>
+      </div>
+      <div class="cond-row">
+        <span class="cond-code">VOL</span>
+        <span class="cond-label">Volume > AvgVol50</span>
+        <button class="toggle on" id="t-vol" onclick="toggleCond(this)"></button>
+      </div>
+      <div class="cond-row">
+        <span class="cond-code">MOM</span>
+        <span class="cond-label">C / C(n) > threshold</span>
+        <button class="toggle on" id="t-mom" onclick="toggleCond(this)"></button>
+      </div>
+      <div class="cond-row">
+        <span class="cond-code">ATR</span>
+        <span class="cond-label">ATR14 / C > min ratio</span>
+        <button class="toggle on" id="t-atr" onclick="toggleCond(this)"></button>
+      </div>
+      <div class="cond-row">
+        <span class="cond-code">NEAR</span>
+        <span class="cond-label">C near MA20 (pullback)</span>
+        <button class="toggle on" id="t-near" onclick="toggleCond(this)"></button>
+      </div>
+      <div class="cond-row">
+        <span class="cond-code">PRICE</span>
+        <span class="cond-label">Close > min price</span>
+        <button class="toggle on" id="t-price" onclick="toggleCond(this)"></button>
+      </div>
+    </div>
+
+    <button class="run-btn" id="run-btn" onclick="runScreen()" disabled>▶ Run Screener</button>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="main-area">
+    <div class="empty" id="empty-state">
+      <div class="empty-icon">📈</div>
+      <div class="empty-msg">Upload a CSV to get started</div>
+      <div class="empty-sub">Expected format: Date, Open, High, Low, Close, Volume<br>Any date format · Any number of rows</div>
+    </div>
+    <div id="results-area" style="display:none;"></div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script>
+// ── DATA STORE ────────────────────────────────────────
+let rawData = [];   // array of {Date, Open, High, Low, Close, Volume}
+let results = [];   // screener output rows
+let signalChart = null;
+
+// ── FILE HANDLING ─────────────────────────────────────
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      rawData = parseCSV(e.target.result);
+      if (rawData.length < 5) throw new Error('Not enough rows');
+      document.getElementById('file-loaded').classList.add('show');
+      document.getElementById('file-name').textContent = file.name + '  (' + rawData.length + ' rows)';
+      document.getElementById('run-btn').disabled = false;
+      setStatus('ready', rawData.length + ' bars loaded');
+      toast(rawData.length + ' rows loaded ✓', 'success');
+    } catch(err) {
+      toast('CSV error: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+  // find column indexes case-insensitively
+  const ci = name => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+  const iDate=ci('date'), iOpen=ci('open'), iHigh=ci('high'), iLow=ci('low'), iClose=ci('close'), iVol=ci('volume');
+  if ([iDate,iOpen,iHigh,iLow,iClose,iVol].some(i=>i<0)) throw new Error('Missing columns. Need: Date,Open,High,Low,Close,Volume');
+  return lines.slice(1).filter(l=>l.trim()).map((line,idx) => {
+    const cols = line.split(',').map(c=>c.trim().replace(/"/g,''));
+    return {
+      index: idx,
+      Date:   cols[iDate],
+      Open:   parseFloat(cols[iOpen]),
+      High:   parseFloat(cols[iHigh]),
+      Low:    parseFloat(cols[iLow]),
+      Close:  parseFloat(cols[iClose]),
+      Volume: parseFloat(cols[iVol]),
+    };
+  }).filter(r => !isNaN(r.Close));
+}
+
+// ── MATH HELPERS ──────────────────────────────────────
+function sma(arr, n) {
+  return arr.map((_, i) => {
+    if (i < n-1) return NaN;
+    let sum = 0;
+    for (let j=i-n+1; j<=i; j++) sum += arr[j];
+    return sum / n;
+  });
+}
+
+function wilderATR(data, n) {
+  const tr = data.map((d,i) => {
+    if (i===0) return d.High - d.Low;
+    const prevClose = data[i-1].Close;
+    return Math.max(d.High-d.Low, Math.abs(d.High-prevClose), Math.abs(d.Low-prevClose));
+  });
+  // Wilder smoothing
+  const atr = new Array(data.length).fill(NaN);
+  // seed with simple average
+  if (tr.length >= n) {
+    let sum=0; for(let i=0;i<n;i++) sum+=tr[i];
+    atr[n-1] = sum/n;
+    for (let i=n; i<tr.length; i++) {
+      atr[i] = (atr[i-1]*(n-1) + tr[i]) / n;
+    }
+  }
+  return atr;
+}
+
+// ── SCREENER ──────────────────────────────────────────
+function runScreen() {
+  if (!rawData.length) return;
+  setStatus('running', 'Calculating…');
+  document.getElementById('run-btn').disabled = true;
+
+  setTimeout(() => {
+    try {
+      // params
+      const P = {
+        sma20:  +document.getElementById('p-sma20').value,
+        sma50:  +document.getElementById('p-sma50').value,
+        sma200: +document.getElementById('p-sma200').value,
+        vsma:   +document.getElementById('p-vsma').value,
+        lb:     +document.getElementById('p-lb').value,
+        ret:    +document.getElementById('p-ret').value,
+        atrP:   +document.getElementById('p-atr').value,
+        atrRat: +document.getElementById('p-atrrat').value,
+        near:   +document.getElementById('p-near').value,
+        minPx:  +document.getElementById('p-minpx').value,
+      };
+
+      // toggles
+      const T = {
+        trend: document.getElementById('t-trend').classList.contains('on'),
+        vol:   document.getElementById('t-vol').classList.contains('on'),
+        mom:   document.getElementById('t-mom').classList.contains('on'),
+        atr:   document.getElementById('t-atr').classList.contains('on'),
+        near:  document.getElementById('t-near').classList.contains('on'),
+        price: document.getElementById('t-price').classList.contains('on'),
+      };
+
+      const closes  = rawData.map(d=>d.Close);
+      const volumes = rawData.map(d=>d.Volume);
+
+      const avgc20  = sma(closes, P.sma20);
+      const avgc50  = sma(closes, P.sma50);
+      const avgc200 = sma(closes, P.sma200);
+      const avgv50  = sma(volumes, P.vsma);
+      const atr14   = wilderATR(rawData, P.atrP);
+
+      results = rawData.map((d, i) => {
+        const c    = d.Close;
+        const v    = d.Volume;
+        const ma20 = avgc20[i];
+        const ma50 = avgc50[i];
+        const ma200= avgc200[i];
+        const av50 = avgv50[i];
+        const atr  = atr14[i];
+        const c_lb = i >= P.lb ? closes[i-P.lb] : NaN;
+
+        const conds = {
+          trend: c > ma50 && ma50 > ma200 && c > ma200,
+          vol:   v > av50,
+          mom:   !isNaN(c_lb) && c/c_lb > P.ret,
+          atr:   !isNaN(atr) && atr/c > P.atrRat,
+          near:  c > ma20 && c < ma20*P.near,
+          price: c > P.minPx,
+        };
+
+        const active = Object.keys(conds).filter(k=>T[k]);
+        const signal = active.every(k=>conds[k]) && active.length>0;
+
+        return {
+          Date:   d.Date,
+          Close:  c,
+          MA20:   ma20,
+          MA50:   ma50,
+          MA200:  ma200,
+          AvgVol: av50,
+          Volume: v,
+          ATR14:  atr,
+          C_LB:   c_lb,
+          conds,
+          Signal: signal,
+        };
+      });
+
+      renderResults(P, T);
+      setStatus('ready', results.filter(r=>r.Signal).length + ' signals found');
+      toast('Screen complete ✓', 'success');
+    } catch(err) {
+      toast('Error: ' + err.message, 'error');
+      setStatus('ready', 'Error — check console');
+    }
+    document.getElementById('run-btn').disabled = false;
+  }, 50);
+}
+
+// ── RENDER RESULTS ────────────────────────────────────
+function renderResults(P, T) {
+  const signals  = results.filter(r=>r.Signal);
+  const total    = results.filter(r=>!isNaN(r.Close)).length;
+  const hitRate  = total>0 ? ((signals.length/total)*100).toFixed(1) : 0;
+  const lastDate = results.length ? results[results.length-1].Date : '—';
+
+  document.getElementById('empty-state').style.display = 'none';
+  const area = document.getElementById('results-area');
+  area.style.display = 'block';
+
+  // Condition summary chips
+  const condNames = {trend:'Trend Alignment',vol:'Volume Surge',mom:'63-Bar Momentum',atr:'ATR Volatility',near:'MA20 Pullback',price:'Min Price'};
+  const chipHTML = Object.entries(T).map(([k,on])=>`<span class="chip ${on?'pass':'fail'}">${on?'✓':'✗'} ${condNames[k]}</span>`).join('');
+
+  // Signal row for chart
+  const last50 = results.slice(-50);
+  const chartLabels = last50.map(r=>r.Date);
+  const chartClose  = last50.map(r=>r.Close);
+  const chartMA20   = last50.map(r=>isNaN(r.MA20)?null:r.MA20);
+  const chartMA50   = last50.map(r=>isNaN(r.MA50)?null:r.MA50);
+  const chartSig    = last50.map(r=>r.Signal ? r.Close : null);
+
+  area.innerHTML = `
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-num" style="color:var(--amber)">${signals.length}</div><div class="stat-lbl">Signal Bars</div></div>
+      <div class="stat-box"><div class="stat-num">${total}</div><div class="stat-lbl">Total Bars</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:var(--info)">${hitRate}%</div><div class="stat-lbl">Hit Rate</div></div>
+      <div class="stat-box"><div class="stat-num" style="color:var(--text2);font-size:14px;">${lastDate}</div><div class="stat-lbl">Last Date</div></div>
+    </div>
+
+    <!-- ACTIVE CONDITIONS -->
+    <div class="chips">${chipHTML}</div>
+
+    <!-- CHART -->
+    <div class="chart-card">
+      <div class="chart-title">📈 Price + MAs + Signals (Last 50 Bars)</div>
+      <canvas id="signal-chart" height="80"></canvas>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <div class="table-title">Signal Results</div>
+        <input class="search-box" placeholder="🔍 Filter by date…" oninput="filterTable(this.value)" id="tbl-search">
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="results-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Date</th><th>Close</th><th>MA20</th><th>MA50</th><th>MA200</th>
+              <th>ATR14</th><th>Volume</th><th>Signal</th><th>Conditions</th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody">
+            ${buildTableRows(results.slice(-200).reverse())}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Draw chart
+  const ctx = document.getElementById('signal-chart').getContext('2d');
+  if (signalChart) signalChart.destroy();
+  signalChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [
+        { label:'Close',  data:chartClose,  borderColor:'#e8e8e8', borderWidth:1.5, pointRadius:0, fill:false, tension:.1 },
+        { label:'MA20',   data:chartMA20,   borderColor:'#f5a623', borderWidth:1.2, pointRadius:0, fill:false, tension:.1, borderDash:[3,3] },
+        { label:'MA50',   data:chartMA50,   borderColor:'#0a84ff', borderWidth:1.2, pointRadius:0, fill:false, tension:.1, borderDash:[5,3] },
+        { label:'Signal', data:chartSig,    borderColor:'transparent', backgroundColor:'rgba(48,209,88,.7)', pointRadius:5, pointStyle:'triangle', showLine:false },
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:true,
+      plugins:{ legend:{ labels:{ color:'#888', font:{size:10} } } },
+      scales:{
+        x:{ ticks:{color:'#555',maxTicksLimit:8,font:{size:9}}, grid:{color:'rgba(255,255,255,.04)'} },
+        y:{ ticks:{color:'#555',font:{size:9}}, grid:{color:'rgba(255,255,255,.04)'} }
+      }
+    }
+  });
+}
+
+function buildTableRows(rows) {
+  if (!rows.length) return '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text2);">No data</td></tr>';
+  const f = (n,dec=2) => isNaN(n)?'—':n.toFixed(dec);
+  const fv = n => isNaN(n)?'—':(n>=1e6?(n/1e6).toFixed(1)+'M':(n>=1e3?(n/1e3).toFixed(0)+'K':n.toFixed(0)));
+  return rows.map((r,i)=>{
+    const condBits = Object.entries(r.conds).map(([k,v])=>
+      `<span style="color:${v?'var(--success)':'var(--text3)'};font-size:10px;margin-right:3px;">${k.toUpperCase()[0]}</span>`
+    ).join('');
+    return `<tr>
+      <td class="mono" style="color:var(--text3)">${i+1}</td>
+      <td class="mono">${r.Date}</td>
+      <td class="mono" style="font-weight:600;">$${f(r.Close)}</td>
+      <td class="mono">${f(r.MA20)}</td>
+      <td class="mono">${f(r.MA50)}</td>
+      <td class="mono">${f(r.MA200)}</td>
+      <td class="mono">${f(r.ATR14,3)}</td>
+      <td class="mono">${fv(r.Volume)}</td>
+      <td>${r.Signal?'<span class="signal-yes">▲ SIGNAL</span>':'<span class="signal-no">—</span>'}</td>
+      <td>${condBits}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterTable(val) {
+  const lower = val.toLowerCase();
+  const filtered = results.slice(-200).reverse().filter(r=>r.Date.toLowerCase().includes(lower)||(val==='')||(val==='signal'&&r.Signal));
+  document.getElementById('results-tbody').innerHTML = buildTableRows(filtered);
+}
+
+// ── UI HELPERS ────────────────────────────────────────
+function toggleCond(btn) { btn.classList.toggle('on'); }
+
+function setStatus(state, msg) {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  dot.className = 'status-dot ' + state;
+  text.textContent = msg;
+}
+
+function toast(msg, type='info') {
+  const stack = document.getElementById('toast-stack');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(()=>t.remove(), 3500);
+}
+
+// drag & drop
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover', e=>{ e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', ()=>zone.classList.remove('drag'));
+zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('drag'); const f=e.dataTransfer.files[0]; if(f){const inp=document.getElementById('file-input'); inp.files=e.dataTransfer.files; handleFile(inp);} });
+</script>
+</body>
+</html>
