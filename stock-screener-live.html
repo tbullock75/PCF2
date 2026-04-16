@@ -361,13 +361,21 @@ IDEX
 AYRO
 EVGO
 CHPT</textarea>
-      <div class="ticker-hint">One ticker per line. Max 20 at once.<br>Uses Yahoo Finance free data — no API key needed.</div>
+      <div class="ticker-hint">One ticker per line. Max 50 at once.<br>Uses Yahoo Finance free data — no API key needed.</div>
       <div class="preset-row">
         <button class="preset-btn" onclick="setPreset('mega')">Mag 7</button>
         <button class="preset-btn" onclick="setPreset('etf')">ETFs</button>
         <button class="preset-btn" onclick="setPreset('tech')">Tech</button>
         <button class="preset-btn" onclick="setPreset('energy')">Energy</button>
         <button class="preset-btn" onclick="setPreset('finance')">Finance</button>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;">
+        <span style="font-size:11px;color:var(--text2);">Max results shown</span>
+        <input class="param-input" id="p-maxresults" value="50" type="number" min="1" max="200" style="width:60px;">
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+        <span style="font-size:11px;color:var(--text2);">Signals only</span>
+        <button class="toggle" id="t-signals-only" onclick="this.classList.toggle('on');filterResults(document.querySelector('.search-box').value)"></button>
       </div>
     </div>
 
@@ -700,18 +708,22 @@ async function runScreener() {
 
 // ── RENDER TABLE ──────────────────────────────────────
 function renderTable(rows) {
-  // Only show tickers that have a signal — hide everything else
-  const signals = rows.filter(r => r.signal && !r.error);
+  const signalsOnly = document.getElementById('t-signals-only').classList.contains('on');
+  const maxResults  = parseInt(document.getElementById('p-maxresults').value) || 50;
   const errors  = rows.filter(r => r.error);
-  const sorted  = signals.sort((a,b) => a.ticker.localeCompare(b.ticker));
-  
+  let filtered  = rows.filter(r => !r.error);
+  if (signalsOnly) filtered = filtered.filter(r => r.signal);
+  const sorted  = filtered.sort((a,b) => {
+    if (a.signal && !b.signal) return -1;
+    if (!a.signal && b.signal) return 1;
+    return a.ticker.localeCompare(b.ticker);
+  }).slice(0, maxResults);
   if (!sorted.length && !errors.length) {
-    document.getElementById('results-tbody').innerHTML = 
-      '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">No tickers matched all conditions</td></tr>';
+    document.getElementById('results-tbody').innerHTML =
+      '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3);font-size:13px;">No results matched</td></tr>';
     return;
   }
-  // Show signals + any errors at bottom
-  document.getElementById('results-tbody').innerHTML = 
+  document.getElementById('results-tbody').innerHTML =
     [...sorted, ...errors].map(r => buildRow(r)).join('');
 }
 
@@ -748,11 +760,18 @@ function buildRow(r) {
 
 function filterResults(val) {
   const lower = val.toLowerCase();
-  const filtered = allResults.filter(r => 
-    (r.signal || r.error) && 
-    (r.ticker.toLowerCase().includes(lower) || !val)
-  );
-  const sorted = [...filtered].sort((a,b) => a.ticker.localeCompare(b.ticker));
+  const signalsOnly = document.getElementById('t-signals-only').classList.contains('on');
+  const maxResults  = parseInt(document.getElementById('p-maxresults').value) || 50;
+  let filtered = allResults.filter(r => {
+    if (val && !r.ticker.toLowerCase().includes(lower)) return false;
+    if (signalsOnly && !r.signal) return false;
+    return true;
+  });
+  const sorted = [...filtered].sort((a,b) => {
+    if (a.signal && !b.signal) return -1;
+    if (!a.signal && b.signal) return 1;
+    return a.ticker.localeCompare(b.ticker);
+  }).slice(0, maxResults);
   document.getElementById('results-tbody').innerHTML = sorted.map(r=>buildRow(r)).join('');
 }
 
